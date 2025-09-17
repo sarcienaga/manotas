@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Robot 3D con Blockly y Webcam</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #2c2f33;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .container {
+            display: flex;
+            flex-grow: 1;
+        }
+
+        #blockly-container {
+            /* Cambiado de flex-grow: 1 a flex-basis para controlar el ancho inicial */
+            flex-basis: 40%; /* Aproximadamente 2/3 del ancho total */
+            min-width: 200px;
+            height: 100%;
+            position: relative;
+        }
+
+        #blocklyDiv {
+            height: 100%;
+            width: 100%;
+        }
+
+        #resizer {
+            width: 10px;
+            cursor: ew-resize;
+            background-color: #555;
+            z-index: 100;
+        }
+
+        #threejs-canvas {
+            /* Cambiado de flex-grow: 1 a flex-basis para controlar el ancho inicial */
+            flex-basis: 60%; /* Aproximadamente 1/3 del ancho total */
+            min-width: 200px;
+            height: 100%;
+            background-color: #1a1a1a;
+            position: relative;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #36393f;
+            border-bottom: 2px solid #555;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .help-text {
+            font-size: 18px;
+            font-weight: 500;
+            color: #b9bbbe;
+        }
+
+        .message-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffffff;
+            padding-left: 10px;
+            animation: none;
+            transition: color 0.3s ease;
+        }
+
+        .blink-animation {
+            animation: blink 0.7s infinite alternate;
+        }
+
+        @keyframes blink {
+            from { opacity: 1; }
+            to { opacity: 0.5; }
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .button {
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #ffffff;
+            background-color: #7289da;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s linear, box-shadow 0.1s linear;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            margin-bottom: 5px;
+            min-width: 100px;
+            min-height: 60px;
+        }
+
+        .button:hover {
+            background-color: #677bc4;
+        }
+
+        .button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        #fileInput {
+            display: none;
+        }
+
+        .blocklyTreeLabel {
+            color: inherit !important;
+        }
+        
+        .blocklyTreeRow[data-id*="Movimiento"] .blocklyTreeLabel {
+            color: #4C97FF !important;
+        }
+        
+        .blocklyTreeRow[data-id*="Evento"] .blocklyTreeLabel {
+            color: #FF8C00 !important;
+        }
+        
+        .blocklyTreeRow[data-id*="Control"] .blocklyTreeLabel {
+            color: #5CB85C !important;
+        }
+        
+        .blocklyTreeRow[data-id*="AnimaciÃ³n"] .blocklyTreeLabel {
+            color: #5B80A5 !important;
+        }
+
+        /* --- ESTILOS PARA LA VENTANA DE LA WEBCAM --- */
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            height: 180px;
+            border: 3px solid #7289da;
+            border-radius: 8px;
+            background-color: #2c2f33;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            resize: both;
+            overflow: hidden;
+        }
+        #video-header {
+            width: 100%;
+            padding: 5px;
+            background-color: #7289da;
+            color: white;
+            text-align: center;
+            font-size: 14px;
+            cursor: move;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+        }
+        #webcam-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        .running-message {
+            color: #ff4136; /* Un rojo vibrante */
+            animation: blink 0.7s infinite alternate; /* Mantenemos la animación existente */
+        }
+
+        /* --- ESTILOS PARA LA CELEBRACIÓN --- */
+        #celebration-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Para que no interfiera con los controles 3D */
+            overflow: hidden;
+            z-index: 100;
+        }
+
+        .clapping-emoji {
+            position: absolute;
+            font-size: 40px;
+            animation: fade-clap 2s ease-in-out forwards;
+        }
+
+        @keyframes fade-clap {
+            0% {
+                opacity: 0;
+                transform: translateY(20px) scale(0.5);
+            }
+            25%, 75% {
+                opacity: 1;
+                transform: translateY(0) scale(1.2);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.5);
+            }
+        }
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/blockly/blockly_compressed.js"></script>
+    <script src="https://unpkg.com/blockly/blocks_compressed.js"></script>
+    <script src="https://unpkg.com/blockly/javascript_compressed.js"></script>
+    <script src="https://unpkg.com/blockly/msg/es_compressed.js"></script>
+</head>
+<body>
+    <div class="controls">
+        <span class="help-text">Comprueba si Manotas reconoce el color del cuadro.</span>
+        <span class="message-text" id="message-text"></span>
+        <div class="control-buttons">
+            <span id="color-message" style="color: red; display: none; font-size: 1.2em; font-weight: bold;">
+                ❌ No es el color
+            </span>
+            <div class="button-container">
+                <button class="button" id="runButton" onclick="runCode()">Ejecutar</button>
+            </div>
+            <button class="button" id="stopButton" onclick="stopExecution()">Detener</button>
+            <button class="button" onclick="resetRobot()">Reiniciar</button>
+            <button class="button" onclick="addCube()" style="display: none;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <svg class="cube-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="2" y="2" width="20" height="20" rx="4" fill="#FF00FF"/>
+                    </svg>
+                    <span>+</span>
+                </div>
+                <span>Obstáculo</span>
+            </button>
+            <button class="button" onclick="addGoal()" style="display: none;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <span>🏁</span>
+                    <span>+</span>
+                </div>
+                <span>Meta</span>
+            </button>
+            <button class="button" id="webcamButton" onclick="toggleWebcam()" style="display: none;">Activar Webcam</button>
+            <button class="button" onclick="saveProject()" style="display: none;">Guardar</button>
+            <button class="button" onclick="document.getElementById('fileInput').click()" style="display: none;">Cargar</button>
+            <input type="file" id="fileInput" accept=".json" onchange="loadProject()">
+        </div>
+    </div>
+    <div class="container">
+        <div id="blockly-container">
+            <div id="blocklyDiv"></div>
+        </div>
+        <div id="resizer"></div>
+        <div id="threejs-canvas">
+            <div id="celebration-container"></div>
+        </div>
+    </div>
+
+    <div id="video-container">
+        <div id="video-header">Video Sensor</div>
+        <video id="webcam-feed" autoplay playsinline></video>
+    </div>
+
+    <audio id="cheer-sound" src="https://raw.githubusercontent.com/sarcienaga/wavHinchada/main/Goal%20Cheer.wav" preload="auto"></audio>
+    <xml id="toolbox" style="display: none">
+        <!--
+        <category name="Movimiento" colour="#4C97FF">
+            <block type="move_robot"></block>
+            <block type="turn_robot"></block>
+            <block type="jump_obstacle"></block>
+        </category>
+        -->
+        <category name="Evento" colour="#FF8C00">
+            <block type="start_program"></block>
+        </category>
+        
+        <category name="Control" colour="#5CB85C">
+                <block type="if_on_color"></block>
+        </category>
+        <!--
+        <category name="Control" colour="#5CB85C">
+            <block type="repeat_times"></block>
+            <block type="forever_loop"></block>
+            <block type="wait"></block>
+            <block type="stop_if_goal_reached"></block>
+            <block type="if_touching_border"></block>
+        </category>
+        -->
+        <!--<category name="Sensor" colour="#00BCD4">-->
+        <!--    <block type="if_video_motion_level"></block>-->
+        <!--</category>-->
+        <category name="Animación" colour="#5B80A5">
+            <block type="play_animation_with_speed"></block>
+            <block type="stop_all_animations"></block>
+        </category>
+    </xml>
+
+    <script>
+        // --- Variables globales para Webcam y Detección de Movimiento ---
+        let videoElement, videoContainer, motionCanvas, motionCtx, lastFrameData;
+        let isWebcamActive = false;
+        window.motionAmountScene = 0;
+        window.motionAmountRobot = 0;
+
+        // Variables globales para Three.js y Blockly
+        let scene, camera, renderer, mixer, controls;
+        let model, clips;
+        let workspace;
+        window.animationNames = window.animationNames || [];
+        window.executionCancelled = false;
+        let initialRobotPosition = new THREE.Vector3(0.5, 0, 0.5);
+
+        let cube, goal;
+        let isDragging = false;
+        let startDragPoint = new THREE.Vector3();
+        let startDragObjectPosition = new THREE.Vector3();
+        let draggedObject = null;
+
+        let collisionIndicator;
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+
+        // **VARIABLES PARA EL SEGUIMIENTO DEL CAMINO**
+        const pathColor = 0x00FF00;
+        // Se cambió el color inicial de la cuadrícula a un gris más claro para que resalte
+        const initialGridColor = 0x555555;
+        let gridGroup;
+        const gridTiles = new Map();
+
+        // --- Definición de los nuevos bloques y sus generadores de código ---
+        const customBlocks = [
+            {
+                "type": "start_program",
+                "message0": "Iniciar %1",
+                "args0": [ { "type": "input_statement", "name": "DO" } ],
+                "colour": "#FF8C00", "tooltip": "Punto de partida para el programa."
+            },
+            {
+                "type": "if_video_motion_level",
+                "message0": "si movimiento en video %1",
+                "args0": [
+                    {
+                        "type": "field_dropdown",
+                        "name": "LEVEL",
+                        "options": [
+                            ["alto (saludar con manos)", "HIGH"],
+                            ["medio (aplaudir)", "MEDIUM"],
+                            ["bajo (mover cabeza)", "LOW"]
+                        ]
+                    }
+                ],
+                "message1": "hacer %1",
+                "args1": [{ "type": "input_statement", "name": "DO" }],
+                "previousStatement": null, "nextStatement": null,
+                "colour": "#00BCD4", "tooltip": "Ejecuta código si detecta el nivel de movimiento especificado en el video."
+            },
+            {
+                "type": "if_touching_border",
+                "message0": "si tocando borde %1",
+                "args0": [
+                    {
+                        "type": "field_dropdown",
+                        "name": "ACTION",
+                        "options": [
+                            ["detener", "STOP"],
+                            ["retroceder", "BACK"],
+                            ["seguir", "CONTINUE"]
+                        ]
+                    }
+                ],
+                "previousStatement": null,
+                "nextStatement": null,
+                "colour": "#5CB85C", "tooltip": "Ejecuta una acción cuando el robot toca el borde de la grilla."
+            },
+            {
+                "type": "repeat_times",
+                "message0": "repetir %1 veces",
+                "args0": [ { "type": "field_number", "name": "TIMES", "value": 1 } ],
+                "message1": "hacer %1",
+                "args1": [ { "type": "input_statement", "name": "DO" } ],
+                "previousStatement": null, "nextStatement": null, "colour": "#5CB85C", "tooltip": "Repite un bloque de código un número de veces."
+            },
+            {
+                "type": "forever_loop",
+                "message0": "por siempre %1",
+                "args0": [ { "type": "input_statement", "name": "DO" } ],
+                "previousStatement": null, "nextStatement": null, "colour": "#5CB85C", "tooltip": "Ejecuta un bloque de código continuamente."
+            },
+
+            {
+                "type": "if_on_color",
+                "message0": "si el robot está en un cuadro de color %1",
+                "args0": [
+                    {
+                        "type": "field_dropdown",
+                        "name": "COLOR",
+                        "options": [
+                            ["rosado", "0xFF69B4"],
+                            ["celeste", "0x00FFFF"],
+                            ["verde", "0x7FFF00"],
+                            ["fucsia", "0xFF00FF"]
+                        ]
+                    }
+                ],
+                "message1": "hacer %1",
+                "args1": [{ "type": "input_statement", "name": "DO" }],
+                "previousStatement": null,
+                "nextStatement": null,
+                "colour": "#5CB85C",
+                "tooltip": "Ejecuta un bloque si el robot está en un cuadro del color especificado."
+            },
+
+            {
+                "type": "play_animation_with_speed",
+                "message0": "animación: %1 velocidad: %2",
+                "args0": [
+                    { "type": "field_dropdown", "name": "ANIMATION_NAME", "options": function() { return window.animationNames.map(n => [n,n]) || [["...",""]]; } },
+                    { "type": "field_dropdown", "name": "SPEED", "options": [["rápido", "2.0"], ["medio", "1.0"], ["lento", "0.5"]] }
+                ],
+                "previousStatement": null, "nextStatement": null, "colour": 230, "tooltip": "Reproduce una animación."
+            },
+            {
+                "type": "stop_all_animations",
+                "message0": "detener todas las animaciones",
+                "previousStatement": null, "nextStatement": null, "colour": 230, "tooltip": "Detiene todas las animaciones."
+            },
+            {
+                "type": "wait",
+                "message0": "esperar %1 segundos",
+                "args0": [ { "type": "field_number", "name": "DURATION", "value": 1, "min": 0 } ],
+                "previousStatement": null, "nextStatement": null, "colour": "#FFD700", "tooltip": "Pausa la ejecución."
+            },
+            {
+                "type": "move_robot",
+                "message0": "mover %1",
+                "args0": [ { "type": "field_dropdown", "name": "DIRECTION", "options": [["adelante", "FORWARD"], ["atrás", "BACKWARD"]] } ],
+                "previousStatement": null, "nextStatement": null, "colour": "#4C97FF", "tooltip": "Mueve el robot."
+            },
+            {
+                "type": "turn_robot",
+                "message0": "girar a la %1",
+                "args0": [ { "type": "field_dropdown", "name": "DIRECTION", "options": [["derecha", "RIGHT"], ["izquierda", "LEFT"]] } ],
+                "previousStatement": null, "nextStatement": null, "colour": "#4C97FF", "tooltip": "Gira el robot."
+            },
+            {
+                "type": "jump_obstacle",
+                "message0": "saltar obstáculo %1",
+                "args0": [ { "type": "field_dropdown", "name": "DIRECTION", "options": [["arriba", "UP"], ["abajo", "DOWN"]] } ],
+                "previousStatement": null, "nextStatement": null, "colour": "#4C97FF", "tooltip": "Hace que el robot salte."
+            },
+            {
+                "type": "stop_if_goal_reached",
+                "message0": "Finalizar si alcanza la meta",
+                "previousStatement": null, "nextStatement": null,
+                "colour": "#5CB85C",
+                "tooltip": "Detiene el programa si el robot está sobre la meta."
+            }
+        ];
+
+        Blockly.defineBlocksWithJsonArray(customBlocks);
+
+        // --- Generadores de código ---
+        Blockly.JavaScript.forBlock['start_program'] = (b, g) => {
+            const doCode = g.statementToCode(b, 'DO');
+            return `await (async () => { ${doCode} })();\n`;
+        };
+
+        Blockly.JavaScript.forBlock['if_video_motion_level'] = (b, g) => {
+            const level = b.getFieldValue('LEVEL');
+            const doCode = g.statementToCode(b, 'DO');
+            let threshold;
+            switch(level) {
+                case 'HIGH':
+                    threshold = 15;
+                    break;
+                case 'MEDIUM':
+                    threshold = 8;
+                    break;
+                case 'LOW':
+                    threshold = 3;
+                    break;
+                default:
+                    threshold = 5;
+            }
+            return `if (window.motionAmountScene > ${threshold}) {\n${doCode}}\n`;
+        };
+
+        Blockly.JavaScript.forBlock['repeat_times'] = (b, g) => `for (let i = 0; i < ${b.getFieldValue('TIMES')}; i++) { if (window.executionCancelled) break; ${g.statementToCode(b, 'DO')} }`;
+        Blockly.JavaScript.forBlock['forever_loop'] = (b, g) => `while (true) { await new Promise(requestAnimationFrame); if (window.executionCancelled) break; ${g.statementToCode(b, 'DO')} }`;
+        Blockly.JavaScript.forBlock['play_animation_with_speed'] = (b) => `if (mixer) { mixer.timeScale = ${b.getFieldValue('SPEED')}; } await window.playAnimation('${b.getFieldValue('ANIMATION_NAME')}');\n`;
+        Blockly.JavaScript.forBlock['stop_all_animations'] = () => 'if (mixer) { mixer.stopAllAction(); }';
+        Blockly.JavaScript.forBlock['wait'] = (b) => `await new Promise(r => setTimeout(r, ${b.getFieldValue('DURATION')} * 1000));`;
+        Blockly.JavaScript.forBlock['move_robot'] = (b) => `await window.moveRobot('${b.getFieldValue('DIRECTION')}');`;
+        Blockly.JavaScript.forBlock['turn_robot'] = (b) => `await window.turnRobot('${b.getFieldValue('DIRECTION')}');`;
+        Blockly.JavaScript.forBlock['jump_obstacle'] = (b) => `await window.jumpObstacle('${b.getFieldValue('DIRECTION')}');`;
+        
+        // MODIFICACIÓN: Agregamos el llamado a displayMessage(true) y a stopExecution()
+        Blockly.JavaScript.forBlock['stop_if_goal_reached'] = (b) => { 
+            return 'if (window.checkGoal()) { window.displayMessage(true); window.stopExecution(); }\n'; 
+        };
+        
+        Blockly.JavaScript.forBlock['if_touching_border'] = (b, g) => {
+            const action = b.getFieldValue('ACTION');
+            return `if (window.checkBorder()) {
+                await window.handleBorderAction('${action}');
+            }\n`;
+        };
+
+        Blockly.JavaScript.forBlock['if_on_color'] = (b, g) => {
+            const color = b.getFieldValue('COLOR');
+            const doCode = g.statementToCode(b, 'DO');
+            // Si el color es correcto, primero ejecuta la animación y luego el código del usuario.
+            return `if (window.checkRobotColor('${color}')) {
+                await window.playSuccessAnimation();
+                ${doCode}
+            } else { 
+                window.displayNoColorMessage(); 
+            }\n`;
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x36393f);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / 2 / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 5);
+            camera.lookAt(0, 1, 0);
+            const canvasContainer = document.getElementById('threejs-canvas');
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            canvasContainer.appendChild(renderer.domElement);
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.target.set(0, 1, 0);
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
+            hemiLight.position.set(0, 20, 0);
+            scene.add(hemiLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff);
+            dirLight.position.set(0, 20, 10);
+            scene.add(dirLight);
+            
+            // **CUADRÍCULA CON OPACIDAD 1 POR DEFECTO**
+            gridGroup = new THREE.Group();
+            const brightPinkColor = 0xFF69B4; // Rosado brillante (antes lightRedColor)
+            const cyanColor = 0x00FFFF; // Celeste cian vibrante (antes vibrantBlueColor)
+            const limeGreenColor = 0x7FFF00; // Verde limón flúor (antes fluorGreenColor)
+            const magentaColor = 0xFF00FF; // Fucsia magenta brillante (antes lightFuchsiaColor)
+            const colors = [brightPinkColor, cyanColor, limeGreenColor, magentaColor];
+
+            const geometry = new THREE.PlaneGeometry(0.98, 0.98);
+            geometry.rotateX(-Math.PI / 2);
+
+            for (let i = 0; i < 10; i++) {
+                for (let j = 0; j < 10; j++) {
+                    const colorIndex = (i % 2) * 2 + (j % 2);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: colors[colorIndex]
+                    });
+                    const plane = new THREE.Mesh(geometry, material);
+                    plane.position.set(i - 4.5, 0, j - 4.5);
+                    gridGroup.add(plane);
+                    const logicalX = Math.round(plane.position.x - 0.5);
+                    const logicalZ = Math.round(plane.position.z - 0.5);
+                    gridTiles.set(`${logicalX},${logicalZ}`, plane);
+                }
+            }
+            scene.add(gridGroup);
+            
+            setupCollisionIndicator();
+            const loader = new THREE.GLTFLoader();
+            loader.load('https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb', (gltf) => {
+                model = gltf.scene;
+                model.scale.set(0.2, 0.2, 0.2);
+                model.position.set(0.5, 0, 0.5);
+                scene.add(model);
+                window.robotModel = model;
+                onLoadModel(gltf.animations);
+            });
+            canvasContainer.addEventListener('pointerdown', onPointerDown);
+            canvasContainer.addEventListener('pointermove', onPointerMove);
+            canvasContainer.addEventListener('pointerup', onPointerUp);
+            const blocklyDiv = document.getElementById('blocklyDiv');
+            const toolbox = document.getElementById('toolbox');
+            //Blockly.Theme.Dark.toolboxBackgroundColour = '#1a1a1a';
+
+            var customDarkTheme = Blockly.Theme.defineTheme('customDark', {
+                'base': Blockly.Theme.Dark,
+                'componentStyles': {
+                    'toolboxBackgroundColour': '#808080',
+                }
+            });
+
+            workspace = Blockly.inject(blocklyDiv, {
+                toolbox: toolbox,
+                scrollbars: true,
+                trashcan: true,
+                theme: customDarkTheme, // Usamos el nuevo tema personalizado
+                zoom: { controls: true, wheel: true, startScale: 0.8, maxScale: 3, minScale: 0.1 }
+            });
+            const resizer = document.getElementById('resizer');
+            const leftPanel = document.getElementById('blockly-container');
+            const rightPanel = document.getElementById('threejs-canvas');
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                document.addEventListener('mousemove', resize);
+                document.addEventListener('mouseup', stopResize);
+            });
+            function resize(e) {
+                const container = document.querySelector('.container');
+                const totalWidth = container.offsetWidth;
+                const leftWidth = e.clientX - container.offsetLeft;
+                const minWidth = 200;
+                if (leftWidth > minWidth && (totalWidth - leftWidth) > minWidth) {
+                    leftPanel.style.flexBasis = `${leftWidth}px`;
+                    rightPanel.style.flexBasis = `${totalWidth - leftWidth}px`;
+                    renderer.setSize(rightPanel.clientWidth, rightPanel.clientHeight);
+                    camera.aspect = rightPanel.clientWidth / rightPanel.clientHeight;
+                    camera.updateProjectionMatrix();
+                    Blockly.svgResize(workspace);
+                }
+            }
+            function stopResize() {
+                document.removeEventListener('mousemove', resize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+            window.addEventListener('resize', () => {
+                const canvasContainer = document.getElementById('threejs-canvas');
+                renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+                camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+                camera.updateProjectionMatrix();
+                Blockly.svgResize(workspace);
+            }, false);
+
+            // --- INICIALIZACIÓN DE ELEMENTOS DE WEBCAM ---
+            videoElement = document.getElementById('webcam-feed');
+            videoContainer = document.getElementById('video-container');
+            makeDraggable(videoContainer);
+            motionCanvas = document.createElement('canvas');
+            motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+        }
+
+        // --- FUNCIONES PARA LA WEBCAM Y DETECCIÓN DE MOVIMIENTO (CORREGIDAS) ---
+        function toggleWebcam() {
+            const button = document.getElementById('webcamButton');
+            if (!isWebcamActive) {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then(stream => {
+                            videoElement.srcObject = stream;
+                            videoContainer.style.display = 'flex';
+                            isWebcamActive = true;
+                            button.textContent = 'Desactivar Webcam';
+                            button.style.backgroundColor = '#d9534f';
+                            videoElement.onloadedmetadata = () => {
+                                setupMotionDetection();
+                                detectMotion();
+                            };
+                        })
+                        .catch(err => {
+                            console.error("Error al acceder a la webcam: ", err);
+                            displayWarning("No se pudo acceder a la webcam.");
+                        });
+                } else {
+                    displayWarning("Webcam no soportada por el navegador.");
+                }
+            } else {
+                const stream = videoElement.srcObject;
+                if (stream) {
+                    const tracks = stream.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+                videoElement.srcObject = null;
+                videoContainer.style.display = 'none';
+                isWebcamActive = false;
+                button.textContent = 'Activar Webcam';
+                button.style.backgroundColor = '#7289da';
+                lastFrameData = null;
+                window.motionAmountScene = 0;
+                window.motionAmountRobot = 0;
+            }
+        }
+
+        function setupMotionDetection() {
+            const scale = 0.25;
+            motionCanvas.width = videoElement.videoWidth * scale;
+            motionCanvas.height = videoElement.videoHeight * scale;
+            motionCtx.translate(motionCanvas.width, 0);
+            motionCtx.scale(-1, 1);
+        }
+
+        function detectMotion() {
+            if (!isWebcamActive) {
+                return;
+            }
+            motionCtx.drawImage(videoElement, 0, 0, motionCanvas.width, motionCanvas.height);
+            const currentFrameData = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height).data;
+            if (lastFrameData) {
+                let totalSceneDifference = 0;
+                let totalRobotDifference = 0;
+                let robotPixelCount = 0;
+                const robotScreenPos = new THREE.Vector3();
+                if (window.robotModel) {
+                    window.robotModel.getWorldPosition(robotScreenPos);
+                    robotScreenPos.project(camera);
+                    const videoX = (1 - (robotScreenPos.x * 0.5 + 0.5)) * motionCanvas.width;
+                    const videoY = (robotScreenPos.y * -0.5 + 0.5) * motionCanvas.height;
+                    const regionSize = 30;
+                    const robotZone = {
+                        x1: Math.floor(videoX - regionSize / 2),
+                        y1: Math.floor(videoY - regionSize / 2),
+                        x2: Math.floor(videoX + regionSize / 2),
+                        y2: Math.floor(videoY + regionSize / 2)
+                    };
+                    for (let i = 0; i < currentFrameData.length; i += 4) {
+                        const r_diff = Math.abs(currentFrameData[i] - lastFrameData[i]);
+                        const g_diff = Math.abs(currentFrameData[i + 1] - lastFrameData[i + 1]);
+                        const b_diff = Math.abs(currentFrameData[i + 2] - lastFrameData[i + 2]);
+                        const avg_diff = (r_diff + g_diff + b_diff) / 3;
+                        totalSceneDifference += avg_diff;
+                        const pixelIndex = i / 4;
+                        const x = pixelIndex % motionCanvas.width;
+                        const y = Math.floor(pixelIndex / motionCanvas.width);
+                        if (x >= robotZone.x1 && x <= robotZone.x2 && y >= robotZone.y1 && y <= robotZone.y2) {
+                            totalRobotDifference += avg_diff;
+                            robotPixelCount++;
+                        }
+                    }
+                } else {
+                    for (let i = 0; i < currentFrameData.length; i += 4) {
+                        const r_diff = Math.abs(currentFrameData[i] - lastFrameData[i]);
+                        const g_diff = Math.abs(currentFrameData[i + 1] - lastFrameData[i + 1]);
+                        const b_diff = Math.abs(currentFrameData[i + 2] - lastFrameData[i + 2]);
+                        const avg_diff = (r_diff + g_diff + b_diff) / 3;
+                        totalSceneDifference += avg_diff;
+                    }
+                }
+                const totalPixels = motionCanvas.width * motionCanvas.height;
+                window.motionAmountScene = totalSceneDifference / totalPixels;
+                window.motionAmountRobot = robotPixelCount > 0 ? totalRobotDifference / robotPixelCount : 0;
+            }
+            lastFrameData = currentFrameData;
+            requestAnimationFrame(detectMotion);
+        }
+
+        function makeDraggable(element) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            const header = document.getElementById("video-header");
+            if (header) {
+                header.onmousedown = dragMouseDown;
+            }
+            function dragMouseDown(e) {
+                e = e || window.event;
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+            function elementDrag(e) {
+                e = e || window.event;
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                element.style.top = (element.offsetTop - pos2) + "px";
+                element.style.left = (element.offsetLeft - pos1) + "px";
+            }
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+        function setupCollisionIndicator() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const context = canvas.getContext('2d');
+            context.fillStyle = 'rgba(0, 0, 0, 0)';
+            context.fillRect(0, 0, 64, 64);
+            context.fillStyle = 'red';
+            context.font = 'bold 60px Inter, sans-serif';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText('!', 32, 32);
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            collisionIndicator = new THREE.Sprite(material);
+            collisionIndicator.scale.set(0.5, 0.5, 0.5);
+            collisionIndicator.visible = false;
+            scene.add(collisionIndicator);
+        }
+        function onLoadModel(animations) {
+            mixer = new THREE.AnimationMixer(model);
+            clips = animations;
+            window.mixer = mixer;
+            window.clips = clips;
+            window.animationNames = clips.map(clip => clip.name);
+            window.animationNames.push("none");
+            const blocks = workspace.getAllBlocks(false);
+            blocks.forEach(block => {
+                if (block.type === 'play_animation_with_speed') {
+                    const field = block.getField('ANIMATION_NAME');
+                    if (field) {
+                        field.menuGenerator_ = window.animationNames.map(name => [name, name]);
+                        if (!window.animationNames.includes(field.getValue())) {
+                            field.setValue(window.animationNames[0]);
+                        }
+                    }
+                }
+            });
+            try { workspace.render(); } catch(e) {}
+            // NUEVO: Reproduce la animación Idle inmediatamente después de la carga
+            window.playIdleAnimation();
+        }
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+            if (controls) controls.update();
+            if (collisionIndicator && collisionIndicator.visible && window.robotModel) {
+                collisionIndicator.position.copy(window.robotModel.position).y += 1.5;
+            }
+            renderer.render(scene, camera);
+        }
+
+        function displayMessage(isSuccess) {
+            const messageElement = document.getElementById('message-text');
+            if (isSuccess) {
+                messageElement.textContent = "¡Felicitaciones lo lograste!";
+                messageElement.classList.add('blink-animation');
+            } else {
+                messageElement.textContent = "¡Vuelve a intentarlo!";
+                messageElement.classList.add('blink-animation');
+            }
+            setTimeout(() => {
+                messageElement.textContent = "";
+                messageElement.classList.remove('blink-animation');
+            }, 5000);
+        }
+
+        function displayWarning(message) {
+            const messageElement = document.getElementById('message-text');
+            messageElement.textContent = message;
+            messageElement.style.color = '#F5D300';
+            messageElement.classList.add('blink-animation');
+            setTimeout(() => {
+                messageElement.textContent = "";
+                messageElement.style.color = '#ffffff';
+                messageElement.classList.remove('blink-animation');
+            }, 5000);
+        }
+        //Función para la animación Idle
+        window.playIdleAnimation = function() {
+            if (!clips || !mixer) return;
+            const idleClip = clips.find(c => c.name === 'Idle');
+            if (idleClip) {
+                mixer.stopAllAction();
+                const action = mixer.clipAction(idleClip);
+                action.play();
+            }
+        };
+
+        // NUEVO: Función para mostrar el mensaje de color
+        window.displayNoColorMessage = function() {
+            const message = document.getElementById('color-message');
+            if (message) {
+                message.style.display = 'block';
+            }
+        };
+
+        // FUNCIÓN ELIMINADA:
+        // window.checkFinalGoal ya no es necesaria, la funcionalidad se movió al generador de código del bloque.
+
+        async function runCode() {
+            window.executionCancelled = false;
+
+            // NUEVO: Ocultar el mensaje de color al iniciar la ejecución
+            const message = document.getElementById('color-message');
+            if (message) {
+                message.style.display = 'none';
+            }
+            
+            // Muestra el mensaje de ejecución en rojo intermitente
+            document.getElementById('message-text').textContent = "¡Ejecutando... Esperar!";
+            document.getElementById('message-text').classList.add('running-message', 'blink-animation');
+
+            Blockly.JavaScript.init(workspace); 
+
+            const startBlocks = workspace.getTopBlocks(true).filter(b => b.type === 'start_program');
+            if (startBlocks.length === 0) {
+                console.warn('No se encontraron bloques de "Iniciar Programa".');
+                clearRunningState();
+                return;
+            }
+            // NUEVO: Detiene la animación Idle antes de ejecutar el código
+            if (window.mixer) window.mixer.stopAllAction();
+
+            const promises = [];
+            for (const block of startBlocks) {
+                const code = Blockly.JavaScript.blockToCode(block);
+                if (!code.trim()) continue;
+
+                const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+                // Creamos una promesa para cada bloque de inicio sin esperarla
+                promises.push(new AsyncFunction(code)());
+            }
+
+            try {
+                // Esperamos a que todas las promesas se resuelvan (se ejecuten)
+                await Promise.all(promises);
+            } catch (e) {
+                console.error("Error durante la ejecución del código:", e);
+            } finally {
+                clearRunningState();
+                // Ahora verificamos el estado del robot en el bloque finally, si el código termina sin haber alcanzado la meta.
+                if (goal && !window.checkGoal()) {
+                     displayMessage(false);
+                } else if (goal && window.checkGoal()) {
+                    displayMessage(true);
+                }
+            }
+        }
+
+        function clearRunningState() {
+            window.executionCancelled = true;
+            if (window.mixer) window.mixer.stopAllAction();
+            window.playIdleAnimation();
+
+            document.getElementById('message-text').textContent = "";
+            document.getElementById('message-text').classList.remove('running-message', 'blink-animation');
+        }
+
+        function stopExecution() {
+            clearRunningState();
+        }
+
+        // **FUNCIÓN PARA CAMBIAR EL COLOR DEL CAMINO**
+        function highlightRobotPath(position) {
+            const x = Math.round(position.x - 0.5);
+            const z = Math.round(position.z - 0.5);
+            const key = `${x},${z}`;
+            const tile = gridTiles.get(key);
+            if (tile) {
+                tile.material.color.set(pathColor);
+            }
+        }
+
+        // **FUNCIÓN PARA BORRAR EL CAMINO**
+        function clearPath() {
+            const brightPinkColor = 0xFF69B4;
+            const cyanColor = 0x00FFFF;
+            const limeGreenColor = 0x7FFF00;
+            const magentaColor = 0xFF00FF;
+            const colors = [brightPinkColor, cyanColor, limeGreenColor, magentaColor];
+
+            gridTiles.forEach((tile, key) => {
+                const [x, z] = key.split(',').map(Number);
+                const colorIndex = ((x + 5) % 2) * 2 + ((z + 5) % 2);
+                const originalColor = colors[colorIndex];
+                tile.material.color.set(originalColor);
+            });
+        }
+
+        window.moveRobot = async function(direction) {
+            if (window.executionCancelled || !window.robotModel) return;
+            const step = 1, duration = 500;
+            const startPosition = window.robotModel.position.clone();
+            const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(window.robotModel.quaternion);
+
+            let targetPosition = startPosition.clone().add(forward.multiplyScalar(direction === 'FORWARD' ? step : -step));
+
+            targetPosition.x = Math.round(targetPosition.x - 0.5) + 0.5;
+            targetPosition.z = Math.round(targetPosition.z - 0.5) + 0.5;
+
+            if (cube && Math.abs(targetPosition.x - cube.position.x) < 0.1 && Math.abs(targetPosition.z - cube.position.z) < 0.1) {
+                 console.log("¡Colisión detectada!");
+                 if (collisionIndicator) {
+                     collisionIndicator.visible = true;
+                     setTimeout(() => { collisionIndicator.visible = false; }, 1000);
+                 }
+                 return;
+            }
+            targetPosition.y = startPosition.y;
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const animateMove = (currentTime) => {
+                    if (window.executionCancelled) return resolve();
+                    const progress = Math.min((currentTime - startTime) / duration, 1);
+                    window.robotModel.position.lerpVectors(startPosition, targetPosition, progress);
+                    // **LLAMADA A LA FUNCIÓN PARA RESALTAR EL CAMINO**
+                    highlightRobotPath(window.robotModel.position);
+                    if (progress < 1) requestAnimationFrame(animateMove);
+                    else {
+                        window.robotModel.position.copy(targetPosition);
+                        // **LLAMADA FINAL PARA RESALTAR EL CUADRO DE DESTINO**
+                        highlightRobotPath(window.robotModel.position);
+                        
+                        // **NUEVA VERIFICACIÓN DE META DESPUÉS DE CADA MOVIMIENTO**
+                        if (window.checkGoal()) {
+                            window.displayMessage(true);
+                            window.stopExecution();
+                            resolve(); // Resuelve la promesa y termina la ejecución
+                        } else {
+                            resolve();
+                        }
+                    }
+                };
+                requestAnimationFrame(animateMove);
+            });
+        };
+
+        window.checkBorder = function() {
+            if (!window.robotModel) return false;
+            const pos = window.robotModel.position;
+            const gridLimit = 4.5; // Grid is 10x10, so limits are approximately -4.5 to +4.5
+            
+            return (pos.x <= -gridLimit || pos.x >= gridLimit || 
+                    pos.z <= -gridLimit || pos.z >= gridLimit);
+        };
+
+        window.handleBorderAction = async function(action) {
+            if (!window.robotModel) return;
+            
+            switch(action) {
+                case 'STOP':
+                    console.log("Robot detenido en el borde");
+                    window.stopExecution();
+                    break;
+                    
+                case 'BACK':
+                    console.log("Robot retrocediendo del borde");
+                    // Move robot back one step from the border
+                    const backDirection = window.robotModel.position.x <= -4.5 || window.robotModel.position.x >= 4.5 ? 
+                        (window.robotModel.position.x > 0 ? -1 : 1) : 0;
+                    const backDirectionZ = window.robotModel.position.z <= -4.5 || window.robotModel.position.z >= 4.5 ? 
+                        (window.robotModel.position.z > 0 ? -1 : 1) : 0;
+                    
+                    if (backDirection !== 0) {
+                        window.robotModel.position.x += backDirection;
+                    }
+                    if (backDirectionZ !== 0) {
+                        window.robotModel.position.z += backDirectionZ;
+                    }
+                    break;
+                    
+                case 'CONTINUE':
+                    console.log("Robot continuando a pesar del borde");
+                    // Do nothing, just continue execution
+                    break;
+            }
+        };
+
+        window.turnRobot = async function(direction) {
+            if (window.executionCancelled || !window.robotModel) return;
+            const startRotation = window.robotModel.rotation.y;
+            const endRotation = startRotation + (Math.PI / 2) * (direction === 'RIGHT' ? -1 : 1);
+            const duration = 200;
+            const startTime = performance.now();
+
+            return new Promise(resolve => {
+                const animateTurn = (currentTime) => {
+                    if (window.executionCancelled) return resolve();
+                    const progress = Math.min((currentTime - startTime) / duration, 1);
+                    window.robotModel.rotation.y = startRotation + (endRotation - startRotation) * progress;
+                    if (progress < 1) requestAnimationFrame(animateTurn);
+                    else resolve();
+                };
+                requestAnimationFrame(animateTurn);
+            });
+        };
+
+        window.jumpObstacle = async function(direction) {
+            if (window.executionCancelled || !window.robotModel) return;
+            const duration = 500;
+            const startPosition = window.robotModel.position.clone();
+            const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(window.robotModel.quaternion);
+            let targetPosition = startPosition.clone().add(forward);
+            let jumpPromise;
+
+            if (direction === 'UP') {
+                if (!cube || Math.abs(targetPosition.x - cube.position.x) > 0.1 || Math.abs(targetPosition.z - cube.position.z) > 0.1) {
+                    console.log("No hay un obstáculo para saltar.");
+                    return;
+                }
+
+                // Línea corregida: Se ajusta la posición 'y' para aterrizar sobre el cubo.
+                targetPosition.y = cube.position.y + (cube.geometry.parameters.height / 2) + (window.robotModel.scale.y * 0.5);
+
+                if (mixer) mixer.timeScale = 1.5;
+                jumpPromise = window.playAnimation('Jump');
+                const jumpArcHeight = 1.5;
+                const startTime = performance.now();
+
+                return new Promise(resolve => {
+                    const animateUp = (currentTime) => {
+                        if (window.executionCancelled) return resolve();
+                        const progress = Math.min((currentTime - startTime) / duration, 1);
+                        const currentX = startPosition.x + (targetPosition.x - startPosition.x) * progress;
+                        const currentZ = startPosition.z + (targetPosition.z - startPosition.z) * progress;
+                        const arcY = jumpArcHeight * Math.sin(progress * Math.PI);
+                        window.robotModel.position.set(currentX, startPosition.y + arcY, currentZ);
+                        if (progress < 1) requestAnimationFrame(animateUp);
+                        else {
+                            window.robotModel.position.y = targetPosition.y;
+                            jumpPromise.then(() => {
+                                // **NUEVA VERIFICACIÓN DE META DESPUÉS DEL SALTO**
+                                if (window.checkGoal()) {
+                                    window.displayMessage(true);
+                                    window.stopExecution();
+                                }
+                                resolve();
+                            });
+                        }
+                    };
+                    requestAnimationFrame(animateUp);
+                });
+
+            } else if (direction === 'DOWN') {
+                const isOnCube = cube && Math.abs(startPosition.x - cube.position.x) < 0.5 && Math.abs(startPosition.z - cube.position.z) < 0.5 && startPosition.y > 0.5;
+                if (!isOnCube) {
+                    console.log("El robot no está sobre un cubo.");
+                    if (collisionIndicator) {
+                        collisionIndicator.visible = true;
+                        setTimeout(() => { collisionIndicator.visible = false; }, 1000);
+                    }
+                    return;
+                }
+                targetPosition = startPosition.clone().add(forward);
+                targetPosition.y = 0;
+                if (mixer) mixer.timeScale = 1.5;
+                jumpPromise = window.playAnimation('Jump');
+                const jumpArcHeight = 1.0;
+                const startTime = performance.now();
+                return new Promise(resolve => {
+                    const animateDown = (currentTime) => {
+                        if (window.executionCancelled) return resolve();
+                        const progress = Math.min((currentTime - startTime) / duration, 1);
+                        const currentX = startPosition.x + (targetPosition.x - startPosition.x) * progress;
+                        const currentZ = startPosition.z + (targetPosition.z - startPosition.z) * progress;
+                        const arcY = jumpArcHeight * Math.sin(progress * Math.PI);
+                        window.robotModel.position.set(currentX, startPosition.y + arcY, currentZ);
+                        if (progress < 1) requestAnimationFrame(animateDown);
+                        else {
+                            // Corrección: robot.position.y debe ser robotModel.position.y
+                            window.robotModel.position.y = 0;
+                            jumpPromise.then(() => {
+                                // **NUEVA VERIFICACIÓN DE META DESPUÉS DEL SALTO**
+                                if (window.checkGoal()) {
+                                    window.displayMessage(true);
+                                    window.stopExecution();
+                                }
+                                resolve();
+                            });
+                        }
+                    };
+                    requestAnimationFrame(animateDown);
+                });
+            }
+        };   
+
+        window.resetRobot = function() {
+            if (window.robotModel) {
+                window.robotModel.position.set(0.5, 0, 0.5);
+                window.robotModel.rotation.y = 0;
+            }
+            if (cube) { scene.remove(cube); cube = null; }
+            if (goal) { scene.remove(goal); goal = null; }
+            document.getElementById('message-text').textContent = "";
+            document.getElementById('message-text').classList.remove('blink-animation');
+            workspace.clear();
+            stopExecution();
+            clearPath(); // **LLAMADA PARA BORRAR EL CAMINO**
+        };
+
+        window.playAnimation = async function(name) {
+            if (window.executionCancelled || !clips || !mixer) return;
+            const clip = clips.find(c => c.name === name);
+            if (!clip) return;
+            return new Promise(resolve => {
+                if (window.executionCancelled) return resolve();
+                mixer.stopAllAction();
+                const action = mixer.clipAction(clip);
+                action.reset().setLoop(THREE.LoopOnce, 1).play();
+                action.clampWhenFinished = true;
+                const onFinished = () => {
+                    mixer.removeEventListener('finished', onFinished);
+                    resolve();
+                };
+                mixer.addEventListener('finished', onFinished);
+            });
+        };
+
+        window.addCube = function() {
+            if (cube) scene.remove(cube);
+            const materials = [
+                new THREE.MeshBasicMaterial({ color: 0xff0000 }), new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+                new THREE.MeshBasicMaterial({ color: 0x0000ff }), new THREE.MeshBasicMaterial({ color: 0xffff00 }),
+                new THREE.MeshBasicMaterial({ color: 0xff00ff }), new THREE.MeshBasicMaterial({ color: 0x00ffff })
+            ];
+            cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), materials);
+            cube.position.set(0.5, 0.5, -4.5);
+            scene.add(cube);
+        };
+
+        window.addGoal = function() {
+            if (goal) scene.remove(goal);
+
+            goal = new THREE.Group();
+
+            const poleGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            goal.add(pole);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const size = 32;
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 2; j++) {
+                    ctx.fillStyle = ((i + j) % 2 === 0) ? '#FFFFFF' : '#000000';
+                    ctx.fillRect(i * size, j * size, size, size);
+                }
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            const flagGeo = new THREE.PlaneGeometry(1, 0.5);
+            const flagMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+            const flag = new THREE.Mesh(flagGeo, flagMat);
+            flag.position.set(0.5, 0.5, 0);
+            goal.add(flag);
+
+            goal.position.set(-0.5, 0.75, -4.5);
+            scene.add(goal);
+        };
+
+        window.checkGoal = function() {
+            if (!window.robotModel || !goal) return false;
+            const robotX = window.robotModel.position.x.toFixed(1);
+            const robotZ = window.robotModel.position.z.toFixed(1);
+            const goalX = goal.position.x.toFixed(1);
+            const goalZ = goal.position.z.toFixed(1);
+            return robotX === goalX && robotZ === goalZ;
+        };
+
+        window.checkRobotColor = function(colorHex) {
+            if (!window.robotModel) return false;
+            const x = Math.round(window.robotModel.position.x - 0.5);
+            const z = Math.round(window.robotModel.position.z - 0.5);
+            const key = `${x},${z}`;
+            const tile = gridTiles.get(key);
+            
+            if (tile) {
+                const tileColor = tile.material.color.getHex();
+                return tileColor === parseInt(colorHex, 16);
+            }
+            
+            return false;
+        };
+
+        // NUEVA FUNCIÓN PARA LA CELEBRACIÓN
+        window.playSuccessAnimation = async function() {
+            const container = document.getElementById('celebration-container');
+            const cheerSound = document.getElementById('cheer-sound');
+            
+            // Reproducir sonido
+            cheerSound.currentTime = 0;
+            cheerSound.play().catch(e => console.log("El navegador impidió la reproducción automática de audio."));
+
+            // Crear y animar emojis
+            const emojiCount = 30; // Cantidad de emojis a mostrar
+            for (let i = 0; i < emojiCount; i++) {
+                const emoji = document.createElement('span');
+                emoji.textContent = '👏';
+                emoji.className = 'clapping-emoji';
+
+                // Posición aleatoria en los bordes
+                const side = Math.floor(Math.random() * 4);
+                const position = Math.random() * 90 + 5; // Porcentaje (5% a 95%)
+
+                if (side === 0) { // Arriba
+                    emoji.style.top = '5%';
+                    emoji.style.left = `${position}%`;
+                } else if (side === 1) { // Abajo
+                    emoji.style.top = '85%';
+                    emoji.style.left = `${position}%`;
+                } else if (side === 2) { // Izquierda
+                    emoji.style.left = '5%';
+                    emoji.style.top = `${position}%`;
+                } else { // Derecha
+                    emoji.style.left = '90%';
+                    emoji.style.top = `${position}%`;
+                }
+                
+                // Un pequeño retraso aleatorio para que no aparezcan todos a la vez
+                emoji.style.animationDelay = `${Math.random() * 0.5}s`;
+
+                container.appendChild(emoji);
+            }
+
+            // Esperar a que la animación termine y limpiar
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    container.innerHTML = ''; // Limpia los emojis
+                    resolve();
+                }, 2000); // La duración de la animación
+            });
+        };
+
+        window.saveProject = function() {
+            try {
+                const xml = Blockly.Xml.workspaceToDom(workspace);
+                const xmlText = Blockly.Xml.domToText(xml);
+                const projectData = {
+                    blocklyXml: xmlText,
+                    robotPosition: window.robotModel ? { x: initialRobotPosition.x, y: initialRobotPosition.y, z: initialRobotPosition.z } : null,
+                    cubePosition: cube ? { x: cube.position.x, y: cube.position.y, z: cube.position.z } : null,
+                    goalPosition: goal ? { x: goal.position.x, y: goal.position.y, z: goal.position.z } : null,
+                };
+                const dataStr = JSON.stringify(projectData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'proyecto_robot.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                document.getElementById('message-text').textContent = "¡Proyecto guardado!";
+            } catch (e) {
+                console.error("Error al guardar el archivo:", e);
+                displayWarning("Error al guardar el archivo. Por favor, revisa la consola para más detalles.");
+            }
+        };
+
+        window.loadProject = function() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const projectData = JSON.parse(event.target.result);
+                    if (!projectData || typeof projectData !== 'object' || !projectData.hasOwnProperty('blocklyXml')) {
+                        throw new Error('El archivo no tiene el formato de proyecto esperado.');
+                    }
+                    workspace.clear();
+                    if (cube) { scene.remove(cube); cube = null; }
+                    if (goal) { scene.remove(goal); goal = null; }
+                    const xml = Blockly.utils.xml.textToDom(projectData.blocklyXml);
+                    Blockly.Xml.domToWorkspace(xml, workspace);
+                    if (window.robotModel && projectData.robotPosition) {
+                        window.robotModel.position.set(projectData.robotPosition.x, projectData.robotPosition.y, projectData.robotPosition.z);
+                    }
+                    if (projectData.cubePosition) {
+                        addCube();
+                        cube.position.set(projectData.cubePosition.x, projectData.cubePosition.y, projectData.cubePosition.z);
+                    }
+                    if (projectData.goalPosition) {
+                        addGoal();
+                        goal.position.set(projectData.goalPosition.x, projectData.goalPosition.y, projectData.goalPosition.z);
+                    }
+                    document.getElementById('message-text').textContent = "¡Proyecto cargado!";
+                } catch (e) {
+                    console.error("Error al cargar el archivo:", e);
+                    displayWarning("Error al cargar el archivo. Asegúrate de que es un archivo de proyecto válido.");
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        let groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        function onPointerDown(event) {
+            if (event.button !== 0) return;
+            const canvasRect = renderer.domElement.getBoundingClientRect();
+            pointer.x = ((event.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
+            pointer.y = -((event.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            const draggableObjects = [];
+            if (cube) draggableObjects.push(cube);
+            if (window.robotModel) draggableObjects.push(window.robotModel);
+            if (goal) draggableObjects.push(goal);
+            const intersects = raycaster.intersectObjects(draggableObjects, true);
+            if (intersects.length > 0) {
+                let selectedObject = intersects[0].object;
+                while (selectedObject.parent && selectedObject.parent !== scene) {
+                    selectedObject = selectedObject.parent;
+                }
+                isDragging = true;
+                draggedObject = selectedObject;
+                controls.enabled = false;
+                renderer.domElement.style.cursor = 'grabbing';
+                raycaster.ray.intersectPlane(groundPlane, startDragPoint);
+                startDragObjectPosition.copy(draggedObject.position);
+            }
+        }
+        function onPointerMove(event) {
+            const canvasRect = renderer.domElement.getBoundingClientRect();
+            pointer.x = ((event.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
+            pointer.y = -((event.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            if (isDragging && draggedObject) {
+                let currentIntersect = new THREE.Vector3();
+                if (raycaster.ray.intersectPlane(groundPlane, currentIntersect)) {
+                    const delta = currentIntersect.sub(startDragPoint);
+                    const newPosition = startDragObjectPosition.clone().add(delta);
+                    const snappedX = Math.round(Math.min(4.5, Math.max(-4.5, newPosition.x)) - 0.5) + 0.5;
+                    const snappedZ = Math.round(Math.min(4.5, Math.max(-4.5, newPosition.z)) - 0.5) + 0.5;
+                    if (draggedObject === cube) draggedObject.position.set(snappedX, 0.5, snappedZ);
+                    else if (draggedObject === window.robotModel) draggedObject.position.set(snappedX, 0, snappedZ);
+                    else if (draggedObject === goal) draggedObject.position.set(snappedX, 0.75, snappedZ);
+                }
+            } else {
+                const draggableObjects = [];
+                if (cube) draggableObjects.push(cube);
+                if (window.robotModel) draggableObjects.push(window.robotModel);
+                if (goal) draggableObjects.push(goal);
+                const intersects = raycaster.intersectObjects(draggableObjects, true);
+                if (intersects.length > 0) {
+                     renderer.domElement.style.cursor = 'grab';
+                } else {
+                    renderer.domElement.style.cursor = 'auto';
+                }
+            }
+        }
+        function onPointerUp() {
+            isDragging = false;
+            controls.enabled = true;
+            renderer.domElement.style.cursor = 'auto';
+            if (draggedObject === window.robotModel) {
+                initialRobotPosition.copy(draggedObject.position);
+            }
+            draggedObject = null;
+        }
+
+        window.onload = function() {
+            init();
+            animate();
+            window.dispatchEvent(new Event('resize'));
+        };
+    </script>
+</body>
+</html>
